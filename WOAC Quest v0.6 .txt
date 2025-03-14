@@ -1,0 +1,393 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WOAC Quest: A Journey to 1059</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: url('background.png') no-repeat center center fixed;
+            background-size: cover;
+            color: #eee;
+            text-align: center;
+            padding: 30px;
+            margin: 0;
+            animation: fadeIn 2s ease;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            color: #ffcc00;
+            text-shadow: 0 0 10px #ffcc00, 0 0 20px #ff6600;
+            margin-bottom: 20px;
+            animation: glowTitle 2s infinite alternate;
+        }
+
+        @keyframes glowTitle {
+            from { text-shadow: 0 0 10px #ffcc00, 0 0 20px #ff6600; }
+            to { text-shadow: 0 0 20px #ffcc00, 0 0 30px #ff6600; }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        #game-container {
+            max-width: 800px;
+            margin: auto;
+            background-color: rgba(51, 51, 51, 0.85);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.7);
+            animation: fadeIn 2s ease;
+        }
+
+        .battle-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .avatars {
+            flex: 1;
+            text-align: center;
+        }
+
+        .question-section {
+            flex: 1;
+            text-align: left;
+        }
+
+        #topic {
+            font-size: 1em;
+            margin-bottom: 10px;
+            color: #ccc;
+        }
+
+        #question {
+            font-size: 1.3em;
+            margin-bottom: 10px;
+        }
+
+        #choices {
+            margin-top: 10px;
+        }
+
+        .hp-bar {
+            width: 80%;
+            background-color: #333;
+            border-radius: 5px;
+            margin: 5px auto;
+            height: 20px;
+            overflow: hidden;
+        }
+
+        .hp-fill {
+            height: 100%;
+            background-color: #4caf50;
+            width: 100%;
+            transition: width 0.3s ease;
+        }
+
+        button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 1em;
+            background-color: #444;
+            color: #eee;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #666;
+        }
+
+        .choice-btn {
+            display: block;
+            margin: 10px auto;
+            width: 80%;
+            background-color: #555;
+            animation: fadeIn 0.5s ease;
+        }
+
+        #status {
+            margin-top: 20px;
+            font-size: 1.1em;
+        }
+
+        #log {
+            text-align: left;
+            background: rgba(17, 17, 17, 0.9);
+            padding: 10px;
+            margin-top: 20px;
+            height: 150px;
+            overflow-y: auto;
+            border-radius: 5px;
+            font-size: 0.9em;
+        }
+
+        input[type="file"] {
+            margin-bottom: 20px;
+        }
+
+        .avatar {
+            width: 120px;
+            height: 120px;
+            margin: 10px;
+            border-radius: 50%;
+            border: 2px solid #eee;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>WOAC Quest: A Journey to 1059</h1>
+
+    <input type="file" id="fileInput" accept=".csv, .xlsx">
+
+    <div id="game-container" style="display:none;">
+        <div class="battle-info">
+            <div class="avatars">
+                <div>
+                    <img src="player.png" class="avatar" alt="Player">
+                    <strong>Your HP:</strong> <span id="playerHp">100</span>
+                    <div class="hp-bar"><div id="playerHpBar" class="hp-fill"></div></div>
+                </div>
+                <div>
+                    <img id="enemyAvatar" src="enemy.png" class="avatar" alt="Enemy">
+                    <strong>Enemy HP:</strong> <span id="enemyHp">1000</span>
+                    <div class="hp-bar"><div id="enemyHpBar" class="hp-fill"></div></div>
+                </div>
+            </div>
+            <div class="question-section">
+                <div id="topic">Topic will appear here</div>
+                <div id="question">Question will appear here</div>
+                <div id="choices"></div>
+            </div>
+        </div>
+
+        <button onclick="startGame()">Restart Battle</button>
+
+        <div id="progress"></div>
+        <div id="status"></div>
+
+        <div id="log"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <script>
+        let cards = [];
+        let incorrectCards = [];
+        let currentIndex = 0;
+        let playerHp = 100;
+        let enemyHp = 200;
+        let level = 1;
+        let gameLog = "";
+        let enemies = [
+            { name: "Putin", hp: 0, avatar: "enemy.png" },
+        ];
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const fileName = file.name.toLowerCase();
+            if (fileName.endsWith('.csv')) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    parseCSV(event.target.result);
+                    setupQuiz();
+                };
+                reader.readAsText(file);
+            } else if (fileName.endsWith('.xlsx')) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                    parseArray(json);
+                    setupQuiz();
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                alert('Unsupported file type! Please upload a .csv or .xlsx file.');
+            }
+        });
+
+        function parseCSV(data) {
+            const lines = data.trim().split('\n');
+            const result = lines.map(line => line.split(','));
+            parseArray(result);
+        }
+
+        function parseArray(array) {
+            cards = array.filter(row => row.length >= 3).map(row => ({ topic: row[0].trim(), question: row[1].trim(), answer: row[2].trim() }));
+        }
+
+        function setupQuiz() {
+            if (cards.length === 0) {
+                alert('No valid cards found in the file.');
+                return;
+            }
+
+            enemies.forEach(enemy => {
+                enemy.hp = cards.length * 20;
+            });
+
+            shuffleCards();
+            incorrectCards = [];
+            startGame();
+            document.getElementById('game-container').style.display = 'block';
+        }
+
+        function shuffleCards() {
+            for (let i = cards.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [cards[i], cards[j]] = [cards[j], cards[i]];
+            }
+        }
+
+        function startGame() {
+            playerHp = 100;
+            enemyHp = enemies[level - 1].hp;
+            currentIndex = 0;
+            gameLog = `Level ${level}: Battle against ${enemies[level - 1].name}!\n`;
+            document.getElementById('enemyAvatar').src = enemies[level - 1].avatar;
+            document.getElementById('status').innerText = '';
+            updateStatus();
+            showCard();
+        }
+
+        function showCard() {
+            if (playerHp <= 0 || enemyHp <= 0) {
+                endGame();
+                return;
+            }
+
+            let card;
+            if (currentIndex < cards.length) {
+                card = cards[currentIndex];
+            } else if (incorrectCards.length > 0) {
+                shuffleArray(incorrectCards);
+                card = incorrectCards.pop();
+                currentIndex = cards.length; // stay in incorrect round
+            } else {
+                endGame();
+                return;
+            }
+
+            document.getElementById('topic').innerText = `Topic: ${card.topic}`;
+            document.getElementById('question').innerText = card.question;
+            generateChoices(card.answer);
+            document.getElementById('progress').innerText = `Card ${Math.min(currentIndex + 1, cards.length)} of ${cards.length}`;
+        }
+
+        function generateChoices(correctAnswer) {
+            const choicesElement = document.getElementById('choices');
+            choicesElement.innerHTML = '';
+
+            let choices = [correctAnswer];
+
+            const otherAnswers = cards.filter((c, idx) => idx !== currentIndex).map(c => c.answer);
+
+            shuffleArray(otherAnswers);
+
+            if (otherAnswers.length > 0) {
+                choices.push(otherAnswers[0]);
+            } else {
+                choices.push("No other answer");
+            }
+
+            shuffleArray(choices);
+
+            choices.forEach(choice => {
+                const btn = document.createElement('button');
+                btn.innerText = choice;
+                btn.classList.add('choice-btn');
+                btn.onclick = () => submitChoice(choice, correctAnswer);
+                choicesElement.appendChild(btn);
+            });
+        }
+
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+        }
+
+        function submitChoice(selected, correct) {
+            const enemyHpElement = document.getElementById('enemyHp');
+            const playerHpElement = document.getElementById('playerHp');
+            const currentCard = currentIndex < cards.length ? cards[currentIndex] : null;
+
+            if (selected.toLowerCase() === correct.toLowerCase()) {
+                enemyHp -= 20;
+                gameLog += `✅ Correct! You hit ${enemies[level - 1].name} for 20 damage!\n`;
+                enemyHpElement.classList.add('pulse', 'glow');
+                setTimeout(() => enemyHpElement.classList.remove('pulse'), 500);
+            } else {
+                playerHp -= 15;
+                gameLog += `❌ Wrong! ${enemies[level - 1].name} strikes you for 15 damage!\n`;
+                gameLog += `🔍 The correct answer was: ${correct}`;
+                if (currentCard) {
+                    incorrectCards.push(currentCard);
+                }
+                playerHpElement.classList.add('pulse');
+                setTimeout(() => playerHpElement.classList.remove('pulse'), 500);
+            }
+
+            updateStatus();
+
+            if (playerHp > 0 && enemyHp > 0) {
+                currentIndex++;
+                showCard();
+            } else {
+                endGame();
+            }
+        }
+
+        function updateStatus() {
+            document.getElementById('playerHp').innerText = Math.max(playerHp, 0);
+            document.getElementById('enemyHp').innerText = Math.max(enemyHp, 0);
+            document.getElementById('playerHpBar').style.width = `${Math.max(playerHp, 0)}%`;
+            document.getElementById('enemyHpBar').style.width = `${(enemyHp / enemies[level - 1].hp) * 100}%`;
+            document.getElementById('log').innerText = gameLog;
+            document.getElementById('log').scrollTop = document.getElementById('log').scrollHeight;
+        }
+
+        function endGame() {
+            const enemyHpElement = document.getElementById('enemyHp');
+            const playerHpElement = document.getElementById('playerHp');
+
+            enemyHpElement.classList.remove('glow');
+            playerHpElement.classList.remove('glow');
+
+            if (enemyHp <= 0) {
+                gameLog += `\n🎉 Victory! You defeated ${enemies[level - 1].name}!\n`;
+                document.getElementById('status').innerText = "YOU WIN!";
+                if (level < enemies.length) {
+                    level++;
+                    gameLog += `\n➡️ Proceeding to Level ${level}...\n`;
+                    setTimeout(() => startGame(), 2000);
+                } else {
+                    gameLog += "\n🏆 Congratulations! You defeated your enemy!\n";
+                }
+            } else if (playerHp <= 0) {
+                gameLog += `\n💀 Defeat! You were defeated by ${enemies[level - 1].name}...\n`;
+                document.getElementById('status').innerText = "GAME OVER!";
+                level = 1;
+            }
+
+            updateStatus();
+        }
+    </script>
+</body>
+</html>
